@@ -1,14 +1,15 @@
 import logger
 import argparse
 import sys
+from typing import Dict
 from pyspark.sql.functions import col, desc, sum, udf, size
 from pyspark.sql.types import *
-from pyspark.sql import SparkSession
+from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import udf
 from pyspark.sql.window import Window
 
 
-def get_attributes(sku, df):
+def get_attributes(sku: str, df: DataFrame) -> Dict[str, str]:
     extracted_row = df.filter(df.sku == sku).select("attributes").collect()[0][0]
     return extracted_row.asDict()
 
@@ -27,7 +28,7 @@ def match_attributes_helper(example):
     return udf(match_attributes_udf, returnType=ArrayType(StringType(), False))
 
 
-def calculate_potential_candidates(sku, items, recommend_num):
+def calculate_potential_candidates(sku: str, items: DataFrame) -> DataFrame:
     attributes_of_given_item = get_attributes(sku, items)
     match_attributes_UDF = match_attributes_helper(attributes_of_given_item)
 
@@ -37,11 +38,10 @@ def calculate_potential_candidates(sku, items, recommend_num):
         .withColumn("matching_count", size(col("matching_attributes")))
         .sort(desc(col("matching_count")))
     )
+    return candidates_for_recommendation
 
-    get_reccomendations(candidates_for_recommendation, recommend_num).show()
 
-
-def cal_amount_of_matching_attributes(candidates):
+def cal_amount_of_matching_attributes(candidates: DataFrame) -> DataFrame:
     window = Window.orderBy(desc(col("matching_count"))).rowsBetween(
         Window.unboundedPreceding, Window.currentRow
     )
@@ -55,12 +55,12 @@ def cal_amount_of_matching_attributes(candidates):
     return candidate_statistics
 
 
-def get_reccomendations(candidates, recommend_num):
-    matchung_counts = cal_amount_of_matching_attributes(candidates)
-    matchung_counts.show()
+def get_reccomendations(candidates: DataFrame, recommend_num: int) -> DataFrame:
+    machting_counts = cal_amount_of_matching_attributes(candidates)
+    machting_counts.show()
 
     # DF count 5,2 cumsum
-    selectAllItemsUntilCount = matchung_counts.orderBy(desc(col("count"))).filter(
+    selectAllItemsUntilCount = machting_counts.orderBy(desc(col("count"))).filter(
         col("cumsum") <= recommend_num
     )
     print(type(selectAllItemsUntilCount))
@@ -76,10 +76,10 @@ def get_reccomendations(candidates, recommend_num):
     print(numberOfAdditionalItemsNeeded)
 
     countWhereSelectionIsNeeded = (
-        matchung_counts.orderBy(desc(col("count"))).filter(
+        machting_counts.orderBy(desc(col("count"))).filter(
             col("cumsum") > recommend_num
         )
-    ).collect()[0]["count"] or max(matchung_counts.orderBy(desc(col("count"))))[0][
+    ).collect()[0]["count"] or max(machting_counts.orderBy(desc(col("count"))))[0][
         "count"
     ]
 
@@ -116,6 +116,7 @@ def main(params):
 
     sku_name = params.sku_name
     json_file_path = params.json_file
+    num = params.num
     spark = (
         SparkSession.builder.master("local[1]")
         .appName("recommendation_engine")
@@ -123,7 +124,8 @@ def main(params):
     )
 
     df = spark.read.json(json_file_path)
-    calculate_potential_candidates(sku_name, df, recommend_num=10)
+    potential_candidates = calculate_potential_candidates(sku_name, df)
+    get_reccomendations(potential_candidates, recommend_num=num).show()
 
 
 if __name__ == "__main__":
