@@ -8,10 +8,10 @@ from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import udf
 from pyspark.sql.window import Window
 
-
-def get_attributes(sku: str, df: DataFrame) -> Dict[str, str]:
-    extracted_row = df.filter(df.sku == sku).select("attributes").collect()[0][0]
-    return extracted_row.asDict()
+# refactoring done
+def extract_item_attributes(item_sku: str, df: DataFrame) -> Dict[str, str]:
+    attributes = df.filter(df.sku == item_sku).select("attributes").first().attributes
+    return attributes.asDict()
 
 
 def match_attributes_helper(example):
@@ -29,7 +29,7 @@ def match_attributes_helper(example):
 
 
 def calculate_potential_candidates(sku: str, items: DataFrame) -> DataFrame:
-    attributes_of_given_item = get_attributes(sku, items)
+    attributes_of_given_item = extract_item_attributes(sku, items)
     match_attributes_UDF = match_attributes_helper(attributes_of_given_item)
 
     candidates_for_recommendation = (
@@ -38,6 +38,8 @@ def calculate_potential_candidates(sku: str, items: DataFrame) -> DataFrame:
         .withColumn("matching_count", size(col("matching_attributes")))
         .sort(desc(col("matching_count")))
     )
+    candidates_for_recommendation.show()
+
     return candidates_for_recommendation
 
 
@@ -51,55 +53,50 @@ def cal_amount_of_matching_attributes(candidates: DataFrame) -> DataFrame:
         .withColumn("cumsum", sum("count").over(window))
         .select(col("matching_count").alias("count"), col("cumsum"))
     )
+
     candidate_statistics.show()
+
     return candidate_statistics
 
 
 def get_reccomendations(candidates: DataFrame, recommend_num: int) -> DataFrame:
-    machting_counts = cal_amount_of_matching_attributes(candidates)
-    machting_counts.show()
+    matching_counts = cal_amount_of_matching_attributes(candidates)
 
-    # DF count 5,2 cumsum
-    selectAllItemsUntilCount = machting_counts.orderBy(desc(col("count"))).filter(
-        col("cumsum") <= recommend_num
+    select_all_items_until_count = None
+    for match in matching_counts.orderBy(desc(col("count"))).collect():
+        if match.cumsum <= recommend_num:
+            select_all_items_until_count = match
+    print(select_all_items_until_count)
+
+    number_of_additional_items_needed = (
+        min(recommend_num, candidates.count()) - select_all_items_until_count["cumsum"]
+        if select_all_items_until_count
+        else 0
     )
-    print(type(selectAllItemsUntilCount))
+    print(f"CHUJ {number_of_additional_items_needed}")
 
-    numberOfAdditionalItemsNeeded = (
-        min(recommend_num, candidates.count())
-        - selectAllItemsUntilCount.collect()[0]["cumsum"]
-        or 0
-    )
-
-    print(min(recommend_num, candidates.count()))
-    print(selectAllItemsUntilCount.collect()[0]["cumsum"])
-    print(numberOfAdditionalItemsNeeded)
-
-    countWhereSelectionIsNeeded = (
-        machting_counts.orderBy(desc(col("count"))).filter(
-            col("cumsum") > recommend_num
-        )
-    ).collect()[0]["count"] or max(machting_counts.orderBy(desc(col("count"))))[0][
-        "count"
-    ]
-
-    print(countWhereSelectionIsNeeded)
+    count_where_select_is_needed = None
+    for match in matching_counts.orderBy((col("count"))).collect():
+        if match.cumsum > recommend_num:
+            count_where_select_is_needed = match["count"]
+    print(f"KUTAS {count_where_select_is_needed}")
 
     logger.logger.info(
-        f"Select {numberOfAdditionalItemsNeeded} additional items "
-        + f"with {countWhereSelectionIsNeeded} matching attributes based on given sorting criterion."
+        f"Select {number_of_additional_items_needed} additional items "
+        + f"with {count_where_select_is_needed} matching attributes based on given sorting criterion."
     )
 
     # for count = 5, where DataFrame (5,2)
-    filtering_value = selectAllItemsUntilCount.collect()[0]["count"]
+    filtering_value = select_all_items_until_count["count"]
+    # print(filtering_value)
     itemsWithoutSelection = candidates.filter(col("matching_count") >= filtering_value)
     # itemsWithoutSelection.show()
 
-    if numberOfAdditionalItemsNeeded > 0:
+    if number_of_additional_items_needed > 0:
         additionalItems = (
-            candidates.filter(col("matching_count") == countWhereSelectionIsNeeded)
+            candidates.filter(col("matching_count") == count_where_select_is_needed)
             .orderBy(col("matching_attributes"))
-            .limit(numberOfAdditionalItemsNeeded)
+            .limit(number_of_additional_items_needed)
         )
         unsortedRecommendations = itemsWithoutSelection.union(additionalItems)
     else:
@@ -125,7 +122,7 @@ def main(params):
 
     df = spark.read.json(json_file_path)
     potential_candidates = calculate_potential_candidates(sku_name, df)
-    get_reccomendations(potential_candidates, recommend_num=num).show()
+    get_reccomendations(potential_candidates, recommend_num=num).show(num)
 
 
 if __name__ == "__main__":
