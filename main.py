@@ -14,32 +14,31 @@ def extract_item_attributes(item_sku: str, df: DataFrame) -> Dict[str, str]:
     return attributes.asDict()
 
 
-def match_attributes_helper(example):
-    def match_attributes_udf(row):
-        parsed_row = row.asDict()
+def attributes_matcher_wrapper(attributes):
+    def attributes_matcher_UDF(row):
+        row_to_dict = row.asDict()
         matching_attributes = {
             key: value
-            for key, value in parsed_row.items()
-            if key in example and example[key] == value
+            for key, value in row_to_dict.items()
+            if key in attributes and attributes[key] == value
         }
 
         return sorted(matching_attributes.keys())
 
-    return udf(match_attributes_udf, returnType=ArrayType(StringType(), False))
+    return udf(attributes_matcher_UDF, returnType=ArrayType(StringType()))
 
 
 def calculate_potential_candidates(sku: str, items: DataFrame) -> DataFrame:
     attributes_of_given_item = extract_item_attributes(sku, items)
-    match_attributes_UDF = match_attributes_helper(attributes_of_given_item)
 
     candidates_for_recommendation = (
         items.filter(items.sku != sku)
-        .withColumn("matching_attributes", match_attributes_UDF(col("attributes")))
+        .withColumn(
+            "matching_attributes",
+            attributes_matcher_wrapper(attributes_of_given_item)(col("attributes")),
+        )
         .withColumn("matching_count", size(col("matching_attributes")))
-        .sort(desc(col("matching_count")))
     )
-    candidates_for_recommendation.show()
-
     return candidates_for_recommendation
 
 
@@ -50,8 +49,8 @@ def cal_amount_of_matching_attributes(candidates: DataFrame) -> DataFrame:
     candidate_statistics = (
         candidates.groupBy(col("matching_count"))
         .count()
-        .withColumn("cumsum", sum("count").over(window))
-        .select(col("matching_count").alias("count"), col("cumsum"))
+        .withColumn("running_total", sum("count").over(window))
+        .select(col("matching_count").alias("amount"), col("running_total"))
     )
 
     candidate_statistics.show()
@@ -63,31 +62,33 @@ def get_reccomendations(candidates: DataFrame, recommend_num: int) -> DataFrame:
     matching_counts = cal_amount_of_matching_attributes(candidates)
 
     select_all_items_until_count = None
-    for match in matching_counts.orderBy(desc(col("count"))).collect():
-        if match.cumsum <= recommend_num:
+    for match in matching_counts.orderBy(desc(col("amount"))).collect():
+        if match.running_total <= recommend_num:
             select_all_items_until_count = match
     print(select_all_items_until_count)
 
-    number_of_additional_items_needed = (
-        min(recommend_num, candidates.count()) - select_all_items_until_count["cumsum"]
-        if select_all_items_until_count
-        else 0
-    )
-    print(f"CHUJ {number_of_additional_items_needed}")
+    number_of_additional_items_needed = 0
+    if select_all_items_until_count:
+        number_of_additional_items_needed = (
+            min(recommend_num, candidates.count())
+            - select_all_items_until_count.running_total
+        )
 
-    count_where_select_is_needed = None
-    for match in matching_counts.orderBy((col("count"))).collect():
-        if match.cumsum > recommend_num:
-            count_where_select_is_needed = match["count"]
-    print(f"KUTAS {count_where_select_is_needed}")
+    # print(f"CHUJ {number_of_additional_items_needed}")
+
+    count_where_select_is_needed = 0
+    for match in matching_counts.orderBy((col("amount"))).collect():
+        if match.running_total > recommend_num:
+            count_where_select_is_needed = match.amount
+    # print(f"KUTAS {count_where_select_is_needed}")
 
     logger.logger.info(
         f"Select {number_of_additional_items_needed} additional items "
         + f"with {count_where_select_is_needed} matching attributes based on given sorting criterion."
     )
 
-    # for count = 5, where DataFrame (5,2)
-    filtering_value = select_all_items_until_count["count"]
+    # for amount = 5, where DataFrame (5,2)
+    filtering_value = select_all_items_until_count["amount"]
     # print(filtering_value)
     itemsWithoutSelection = candidates.filter(col("matching_count") >= filtering_value)
     # itemsWithoutSelection.show()
