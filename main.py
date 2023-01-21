@@ -16,7 +16,7 @@ def extract_article_attributes(article_sku: str, df: DataFrame) -> Dict[str, str
     return attributes.asDict()
 
 
-# Returning DataFrame of articles that will be use for further recommendations
+# Returning DataFrame of articles that will be use for further recommendations excluding sku from input article
 def get_potential_articles_for_recommendation(
     sku: str, articles: DataFrame
 ) -> DataFrame:
@@ -35,7 +35,7 @@ def get_potential_articles_for_recommendation(
 
 # refactor to-do
 def calculate_recommendations(candidates: DataFrame, recommend_num: int) -> DataFrame:
-    matching_counts = get_matches_statistics(candidates)
+    matching_counts = get_matching_statistics(candidates)
 
     select_all_items_until_count = None
     for match in matching_counts.orderBy(desc(col("num_of_matches"))).collect():
@@ -104,7 +104,7 @@ def attributes_matcher_wrapper(attributes):
 
 
 # Returning DataFrame with following columns: number of matches, count and running_total for matching attributes
-def get_matches_statistics(df_articles: DataFrame) -> DataFrame:
+def get_matching_statistics(df_articles: DataFrame) -> DataFrame:
     window = Window.orderBy(desc(col("num_of_matches"))).rowsBetween(
         Window.unboundedPreceding, Window.currentRow
     )
@@ -119,7 +119,6 @@ def get_matches_statistics(df_articles: DataFrame) -> DataFrame:
     return df_stats
 
 
-# refactor to-do
 def main(params):
     # local[2] for 2 cores
     spark = (
@@ -142,7 +141,6 @@ def main(params):
     spark.stop()
 
 
-# refactor to-do
 if __name__ == "__main__":
     # Adding argument to be passed in the terminal
     parser = argparse.ArgumentParser(
