@@ -28,7 +28,7 @@ def calculate_potential_candidates(sku: str, items: DataFrame) -> DataFrame:
     return candidates_for_recommendation
 
 
-def get_reccomendations(candidates: DataFrame, recommend_num: int) -> DataFrame:
+def get_recommendations(candidates: DataFrame, recommend_num: int) -> DataFrame:
     matching_counts = cal_amount_of_matching_attributes(candidates)
 
     select_all_items_until_count = None
@@ -114,19 +114,22 @@ def cal_amount_of_matching_attributes(candidates: DataFrame) -> DataFrame:
 
 
 def main(params):
-
-    sku_name = params.sku_name
-    json_file_path = params.json_file
-    num = params.num
+    # local[2] for 2 cores
     spark = (
-        SparkSession.builder.master("local[1]")
+        SparkSession.builder.master("local[2]")
         .appName("recommendation_engine")
         .getOrCreate()
     )
+    sku_name = params.sku_name
+    json_file_path = params.json_file
+    num = params.num
 
     df = spark.read.json(json_file_path)
+    # engine = RecomendationEngine(sku_name, df, num)
+    # engine.get_recommendations().show()
     potential_candidates = calculate_potential_candidates(sku_name, df)
-    get_reccomendations(potential_candidates, recommend_num=num).show(num)
+    get_recommendations(potential_candidates, recommend_num=num).show(num)
+
     spark.stop()
 
 

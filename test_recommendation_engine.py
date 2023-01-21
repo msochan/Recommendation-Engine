@@ -4,11 +4,11 @@ from typing import Dict
 import main
 
 
-class TestRecommender(TestCase):
+class TestRecommendationEngine(TestCase):
     def setUp(self):
         self.sku = "sku-188"
         self.spark = (
-            SparkSession.builder.master("local[1]")
+            SparkSession.builder.master("local[2]")
             .appName("recommendation_engine")
             .getOrCreate()
         )
