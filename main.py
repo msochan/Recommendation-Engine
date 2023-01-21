@@ -8,27 +8,31 @@ from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import udf
 from pyspark.sql.window import Window
 
-# refactoring done
-def extract_item_attributes(item_sku: str, df: DataFrame) -> Dict[str, str]:
-    attributes = df.filter(df.sku == item_sku).select("attributes").first().attributes
+# Extracting atributes from given article
+def extract_article_attributes(article_sku: str, df: DataFrame) -> Dict[str, str]:
+    attributes = (
+        df.filter(df.sku == article_sku).select("attributes").first().attributes
+    )
     return attributes.asDict()
 
 
-def calculate_potential_candidates(sku: str, items: DataFrame) -> DataFrame:
-    attributes_of_given_item = extract_item_attributes(sku, items)
+# Returning DataFrame of articles that will be use for further recommendations
+def get_potential_article_candidates(sku: str, articles: DataFrame) -> DataFrame:
+    input_item_attributes = extract_article_attributes(sku, articles)
 
-    candidates_for_recommendation = (
-        items.filter(items.sku != sku)
+    df_candidates = (
+        articles.filter(articles.sku != sku)
         .withColumn(
-            "matching_attributes",
-            attributes_matcher_wrapper(attributes_of_given_item)(col("attributes")),
+            "attribute_matches",
+            attributes_matcher_wrapper(input_item_attributes)(col("attributes")),
         )
-        .withColumn("matching_count", size(col("matching_attributes")))
+        .withColumn("num_of_matches", size(col("attribute_matches")))
     )
-    return candidates_for_recommendation
+    return df_candidates
 
 
-def get_recommendations(candidates: DataFrame, recommend_num: int) -> DataFrame:
+# refactor to-do
+def calculate_recommendations(candidates: DataFrame, recommend_num: int) -> DataFrame:
     matching_counts = cal_amount_of_matching_attributes(candidates)
 
     select_all_items_until_count = None
@@ -53,20 +57,20 @@ def get_recommendations(candidates: DataFrame, recommend_num: int) -> DataFrame:
     # print(f"KUTAS {count_where_select_is_needed}")
 
     logger.logger.info(
-        f"Select {number_of_additional_items_needed} additional items "
+        f"Select {number_of_additional_items_needed} additional articles "
         + f"with {count_where_select_is_needed} matching attributes based on given sorting criterion."
     )
 
     # for amount = 5, where DataFrame (5,2)
     filtering_value = select_all_items_until_count["amount"]
     # print(filtering_value)
-    itemsWithoutSelection = candidates.filter(col("matching_count") >= filtering_value)
+    itemsWithoutSelection = candidates.filter(col("num_of_matches") >= filtering_value)
     # itemsWithoutSelection.show()
 
     if number_of_additional_items_needed > 0:
         additionalItems = (
-            candidates.filter(col("matching_count") == count_where_select_is_needed)
-            .orderBy(col("matching_attributes"))
+            candidates.filter(col("num_of_matches") == count_where_select_is_needed)
+            .orderBy(col("attribute_matches"))
             .limit(number_of_additional_items_needed)
         )
         unsortedRecommendations = itemsWithoutSelection.union(additionalItems)
@@ -78,34 +82,35 @@ def get_recommendations(candidates: DataFrame, recommend_num: int) -> DataFrame:
     # eventually in a situation when there is the same amount of matches within multiple rows
     # then we could sort at the end by column "sku" or column "attributes"
     return unsortedRecommendations.orderBy(
-        desc(col("matching_count")), col("matching_attributes"), col("sku")
+        desc(col("num_of_matches")), col("attribute_matches"), col("sku")
     )
 
 
-# refactoring done
+# UDF that can be applied on column to find matches for every row (it seems that PySpark in DataFrame API doesn't have map function)
 def attributes_matcher_wrapper(attributes):
     def attributes_matcher_UDF(row):
         row_to_dict = row.asDict()
-        matching_attributes = {
+        attribute_matches = {
             key: value
             for key, value in row_to_dict.items()
             if key in attributes and attributes[key] == value
         }
 
-        return sorted(matching_attributes.keys())
+        return sorted(attribute_matches.keys())
 
     return udf(attributes_matcher_UDF, returnType=ArrayType(StringType()))
 
 
+# refactor to-do
 def cal_amount_of_matching_attributes(candidates: DataFrame) -> DataFrame:
-    window = Window.orderBy(desc(col("matching_count"))).rowsBetween(
+    window = Window.orderBy(desc(col("num_of_matches"))).rowsBetween(
         Window.unboundedPreceding, Window.currentRow
     )
     candidate_statistics = (
-        candidates.groupBy(col("matching_count"))
+        candidates.groupBy(col("num_of_matches"))
         .count()
         .withColumn("running_total", sum("count").over(window))
-        .select(col("matching_count").alias("amount"), col("running_total"))
+        .select(col("num_of_matches").alias("amount"), col("running_total"))
     )
 
     candidate_statistics.show()
@@ -113,6 +118,7 @@ def cal_amount_of_matching_attributes(candidates: DataFrame) -> DataFrame:
     return candidate_statistics
 
 
+# refactor to-do
 def main(params):
     # local[2] for 2 cores
     spark = (
@@ -127,12 +133,13 @@ def main(params):
     df = spark.read.json(json_file_path)
     # engine = RecomendationEngine(sku_name, df, num)
     # engine.get_recommendations().show()
-    potential_candidates = calculate_potential_candidates(sku_name, df)
-    get_recommendations(potential_candidates, recommend_num=num).show(num)
+    potential_candidates = get_potential_article_candidates(sku_name, df)
+    calculate_recommendations(potential_candidates, recommend_num=num).show(num)
 
     spark.stop()
 
 
+# refactor to-do
 if __name__ == "__main__":
     # Adding argument to be passed in the terminal
     parser = argparse.ArgumentParser(

@@ -18,7 +18,7 @@ class TestRecommendationEngine(TestCase):
         self.spark.stop()
 
     def test_extract_item_attributes(self):
-        actual = main.extract_item_attributes(self.sku, self.df)
+        actual = main.extract_article_attributes(self.sku, self.df)
         self.assertIsInstance(actual, Dict) and all(
             isinstance(key, str) for key in actual.keys()
         ) and all(isinstance(value, str) for value in actual.values())
