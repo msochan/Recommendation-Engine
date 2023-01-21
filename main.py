@@ -14,20 +14,6 @@ def extract_item_attributes(item_sku: str, df: DataFrame) -> Dict[str, str]:
     return attributes.asDict()
 
 
-def attributes_matcher_wrapper(attributes):
-    def attributes_matcher_UDF(row):
-        row_to_dict = row.asDict()
-        matching_attributes = {
-            key: value
-            for key, value in row_to_dict.items()
-            if key in attributes and attributes[key] == value
-        }
-
-        return sorted(matching_attributes.keys())
-
-    return udf(attributes_matcher_UDF, returnType=ArrayType(StringType()))
-
-
 def calculate_potential_candidates(sku: str, items: DataFrame) -> DataFrame:
     attributes_of_given_item = extract_item_attributes(sku, items)
 
@@ -40,22 +26,6 @@ def calculate_potential_candidates(sku: str, items: DataFrame) -> DataFrame:
         .withColumn("matching_count", size(col("matching_attributes")))
     )
     return candidates_for_recommendation
-
-
-def cal_amount_of_matching_attributes(candidates: DataFrame) -> DataFrame:
-    window = Window.orderBy(desc(col("matching_count"))).rowsBetween(
-        Window.unboundedPreceding, Window.currentRow
-    )
-    candidate_statistics = (
-        candidates.groupBy(col("matching_count"))
-        .count()
-        .withColumn("running_total", sum("count").over(window))
-        .select(col("matching_count").alias("amount"), col("running_total"))
-    )
-
-    candidate_statistics.show()
-
-    return candidate_statistics
 
 
 def get_reccomendations(candidates: DataFrame, recommend_num: int) -> DataFrame:
@@ -105,9 +75,42 @@ def get_reccomendations(candidates: DataFrame, recommend_num: int) -> DataFrame:
 
     # unsortedRecommendations.show()
 
+    # eventually in a situation when there is the same amount of matches within multiple rows
+    # then we could sort at the end by column "sku" or column "attributes"
     return unsortedRecommendations.orderBy(
-        desc(col("matching_count")), col("matching_attributes")
+        desc(col("matching_count")), col("matching_attributes"), col("sku")
     )
+
+
+# refactoring done
+def attributes_matcher_wrapper(attributes):
+    def attributes_matcher_UDF(row):
+        row_to_dict = row.asDict()
+        matching_attributes = {
+            key: value
+            for key, value in row_to_dict.items()
+            if key in attributes and attributes[key] == value
+        }
+
+        return sorted(matching_attributes.keys())
+
+    return udf(attributes_matcher_UDF, returnType=ArrayType(StringType()))
+
+
+def cal_amount_of_matching_attributes(candidates: DataFrame) -> DataFrame:
+    window = Window.orderBy(desc(col("matching_count"))).rowsBetween(
+        Window.unboundedPreceding, Window.currentRow
+    )
+    candidate_statistics = (
+        candidates.groupBy(col("matching_count"))
+        .count()
+        .withColumn("running_total", sum("count").over(window))
+        .select(col("matching_count").alias("amount"), col("running_total"))
+    )
+
+    candidate_statistics.show()
+
+    return candidate_statistics
 
 
 def main(params):
@@ -124,6 +127,7 @@ def main(params):
     df = spark.read.json(json_file_path)
     potential_candidates = calculate_potential_candidates(sku_name, df)
     get_reccomendations(potential_candidates, recommend_num=num).show(num)
+    spark.stop()
 
 
 if __name__ == "__main__":
