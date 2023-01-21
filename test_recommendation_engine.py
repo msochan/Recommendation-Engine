@@ -12,7 +12,7 @@ class TestRecommendationEngine(TestCase):
             .appName("recommendation_engine")
             .getOrCreate()
         )
-        self.df = self.spark.read.json("small-test-data.json")
+        self.df = self.spark.read.json("test_recommendation_engine.json")
 
     def tearDown(self):
         self.spark.stop()

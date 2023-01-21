@@ -17,26 +17,28 @@ def extract_article_attributes(article_sku: str, df: DataFrame) -> Dict[str, str
 
 
 # Returning DataFrame of articles that will be use for further recommendations
-def get_potential_article_candidates(sku: str, articles: DataFrame) -> DataFrame:
-    input_item_attributes = extract_article_attributes(sku, articles)
+def get_potential_articles_for_recommendation(
+    sku: str, articles: DataFrame
+) -> DataFrame:
+    input_article_attributes = extract_article_attributes(sku, articles)
 
-    df_candidates = (
+    df_articles = (
         articles.filter(articles.sku != sku)
         .withColumn(
             "attribute_matches",
-            attributes_matcher_wrapper(input_item_attributes)(col("attributes")),
+            attributes_matcher_wrapper(input_article_attributes)(col("attributes")),
         )
         .withColumn("num_of_matches", size(col("attribute_matches")))
     )
-    return df_candidates
+    return df_articles
 
 
 # refactor to-do
 def calculate_recommendations(candidates: DataFrame, recommend_num: int) -> DataFrame:
-    matching_counts = cal_amount_of_matching_attributes(candidates)
+    matching_counts = get_matches_statistics(candidates)
 
     select_all_items_until_count = None
-    for match in matching_counts.orderBy(desc(col("amount"))).collect():
+    for match in matching_counts.orderBy(desc(col("num_of_matches"))).collect():
         if match.running_total <= recommend_num:
             select_all_items_until_count = match
     print(select_all_items_until_count)
@@ -51,9 +53,9 @@ def calculate_recommendations(candidates: DataFrame, recommend_num: int) -> Data
     # print(f"CHUJ {number_of_additional_items_needed}")
 
     count_where_select_is_needed = 0
-    for match in matching_counts.orderBy((col("amount"))).collect():
+    for match in matching_counts.orderBy((col("num_of_matches"))).collect():
         if match.running_total > recommend_num:
-            count_where_select_is_needed = match.amount
+            count_where_select_is_needed = match.num_of_matches
     # print(f"KUTAS {count_where_select_is_needed}")
 
     logger.logger.info(
@@ -61,8 +63,8 @@ def calculate_recommendations(candidates: DataFrame, recommend_num: int) -> Data
         + f"with {count_where_select_is_needed} matching attributes based on given sorting criterion."
     )
 
-    # for amount = 5, where DataFrame (5,2)
-    filtering_value = select_all_items_until_count["amount"]
+    # for num_of_matches = 5, where DataFrame (5,2)
+    filtering_value = select_all_items_until_count["num_of_matches"]
     # print(filtering_value)
     itemsWithoutSelection = candidates.filter(col("num_of_matches") >= filtering_value)
     # itemsWithoutSelection.show()
@@ -79,7 +81,7 @@ def calculate_recommendations(candidates: DataFrame, recommend_num: int) -> Data
 
     # unsortedRecommendations.show()
 
-    # eventually in a situation when there is the same amount of matches within multiple rows
+    # eventually in a situation when there is the same num_of_matches of matches within multiple rows
     # then we could sort at the end by column "sku" or column "attributes"
     return unsortedRecommendations.orderBy(
         desc(col("num_of_matches")), col("attribute_matches"), col("sku")
@@ -101,21 +103,20 @@ def attributes_matcher_wrapper(attributes):
     return udf(attributes_matcher_UDF, returnType=ArrayType(StringType()))
 
 
-# refactor to-do
-def cal_amount_of_matching_attributes(candidates: DataFrame) -> DataFrame:
+# Returning DataFrame with following columns: number of matches, count and running_total for matching attributes
+def get_matches_statistics(df_articles: DataFrame) -> DataFrame:
     window = Window.orderBy(desc(col("num_of_matches"))).rowsBetween(
         Window.unboundedPreceding, Window.currentRow
     )
-    candidate_statistics = (
-        candidates.groupBy(col("num_of_matches"))
+    df_stats = (
+        df_articles.groupBy(col("num_of_matches"))
         .count()
         .withColumn("running_total", sum("count").over(window))
-        .select(col("num_of_matches").alias("amount"), col("running_total"))
     )
 
-    candidate_statistics.show()
+    df_stats.show()
 
-    return candidate_statistics
+    return df_stats
 
 
 # refactor to-do
@@ -126,6 +127,8 @@ def main(params):
         .appName("recommendation_engine")
         .getOrCreate()
     )
+    spark.sparkContext.setLogLevel("ERROR")
+
     sku_name = params.sku_name
     json_file_path = params.json_file
     num = params.num
@@ -133,7 +136,7 @@ def main(params):
     df = spark.read.json(json_file_path)
     # engine = RecomendationEngine(sku_name, df, num)
     # engine.get_recommendations().show()
-    potential_candidates = get_potential_article_candidates(sku_name, df)
+    potential_candidates = get_potential_articles_for_recommendation(sku_name, df)
     calculate_recommendations(potential_candidates, recommend_num=num).show(num)
 
     spark.stop()
