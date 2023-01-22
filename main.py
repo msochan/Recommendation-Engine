@@ -9,18 +9,30 @@ from pyspark.sql.functions import udf
 from pyspark.sql.window import Window
 
 # Extracting atributes from given article
-def extract_article_attributes(article_sku: str, df: DataFrame) -> Dict[str, str]:
-    attributes = (
-        df.filter(df.sku == article_sku).select("attributes").first().attributes
-    )
-    return attributes.asDict()
+def extract_article_attributes(
+    article_sku: str, df: DataFrame, spark_session: SparkSession
+) -> Dict[str, str]:
+    try:
+        attributes = (
+            df.filter(df.sku == article_sku).select("attributes").first().attributes
+        )
+    except AttributeError:
+        logger.logger.error(
+            f"Article with SKU= {article_sku} not found in the input .json file!"
+        )
+        spark_session.stop()
+        sys.exit()
+    else:
+        return attributes.asDict()
 
 
 # Returning DataFrame of articles that will be use for further recommendations excluding sku from input article
 def get_potential_articles_for_recommendation(
-    article_sku: str, df: DataFrame
+    article_sku: str, df: DataFrame, spark_session: SparkSession
 ) -> DataFrame:
-    input_article_attributes = extract_article_attributes(article_sku, df)
+    input_article_attributes = extract_article_attributes(
+        article_sku, df, spark_session
+    )
 
     df_articles = (
         df.filter(df.sku != article_sku)
@@ -31,6 +43,7 @@ def get_potential_articles_for_recommendation(
         .withColumn("num_of_matches", size(col("attribute_matches")))
         .select(["sku", "attributes", "attribute_matches", "num_of_matches"])
     )
+
     df_articles.show()
     return df_articles
 
@@ -139,7 +152,9 @@ def main(params):
     df = spark.read.json(json_file_path)
     # engine = RecomendationEngine(sku_name, df, num)
     # engine.get_recommendations().show()
-    potential_candidates = get_potential_articles_for_recommendation(sku_name, df)
+    potential_candidates = get_potential_articles_for_recommendation(
+        sku_name, df, spark
+    )
     calculate_recommendations(potential_candidates, recommend_num=num).show(num)
 
     spark.stop()
