@@ -18,22 +18,24 @@ def extract_article_attributes(article_sku: str, df: DataFrame) -> Dict[str, str
 
 # Returning DataFrame of articles that will be use for further recommendations excluding sku from input article
 def get_potential_articles_for_recommendation(
-    sku: str, articles: DataFrame
+    article_sku: str, df: DataFrame
 ) -> DataFrame:
-    input_article_attributes = extract_article_attributes(sku, articles)
+    input_article_attributes = extract_article_attributes(article_sku, df)
 
     df_articles = (
-        articles.filter(articles.sku != sku)
+        df.filter(df.sku != article_sku)
         .withColumn(
             "attribute_matches",
             attributes_matcher_wrapper(input_article_attributes)(col("attributes")),
         )
         .withColumn("num_of_matches", size(col("attribute_matches")))
+        .select(["sku", "attributes", "attribute_matches", "num_of_matches"])
     )
+    df_articles.show()
     return df_articles
 
 
-# refactor to-do
+# refactor to-do - mozna zrobic z tego dwie funkcje zeby bylo przejrzysciej
 def calculate_recommendations(candidates: DataFrame, recommend_num: int) -> DataFrame:
     matching_counts = get_matching_statistics(candidates)
 
@@ -41,7 +43,7 @@ def calculate_recommendations(candidates: DataFrame, recommend_num: int) -> Data
     for match in matching_counts.orderBy(desc(col("num_of_matches"))).collect():
         if match.running_total <= recommend_num:
             select_all_items_until_count = match
-    print(select_all_items_until_count)
+    # print(select_all_items_until_count)
 
     number_of_additional_items_needed = 0
     if select_all_items_until_count:
@@ -62,6 +64,8 @@ def calculate_recommendations(candidates: DataFrame, recommend_num: int) -> Data
         f"Select {number_of_additional_items_needed} additional articles "
         + f"with {count_where_select_is_needed} matching attributes based on given sorting criterion."
     )
+
+    ######## ponizej poczatek drugiej funkcji
 
     # for num_of_matches = 5, where DataFrame (5,2)
     filtering_value = select_all_items_until_count["num_of_matches"]
@@ -157,6 +161,6 @@ if __name__ == "__main__":
         args = parser.parse_args()
         main(args)
     else:
-        print(
+        logger.logger.error(
             "Program needs to be run with 3 keyword arguments '--sku_name', '--json_file', and '--num'"
         )
