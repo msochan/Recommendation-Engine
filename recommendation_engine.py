@@ -22,8 +22,12 @@ class RecommendationEngine:
         self.df = df
         self.df_for_recommendation = self.get_potential_articles_for_recommendation()
 
-    # Extracting atributes from given article
     def extract_article_attributes(self) -> Dict[str, str]:
+        """Return attributes for an article of a given SKU, of which recommendations are desired
+
+        Returns:
+            Dict[str, str]: Dictionary with string keys, and string values
+        """
         try:
             article_attributes = (
                 self.df.filter(self.df.sku == self.sku_name)
@@ -40,8 +44,13 @@ class RecommendationEngine:
         else:
             return article_attributes.asDict()
 
-    # Returning DataFrame of articles that will be use for further recommendations excluding sku from input article
-    def get_potential_articles_for_recommendation(self) -> None:
+    def get_potential_articles_for_recommendation(self) -> DataFrame:
+        """Return DataFrame of articles that will be use for
+            further recommendations excluding SKU from the input article
+
+        Returns:
+            DataFrame: PySpark DataFrame API object
+        """
         input_article_attributes = self.extract_article_attributes()
 
         df_for_recommendation = (
@@ -58,8 +67,13 @@ class RecommendationEngine:
 
         return df_for_recommendation
 
-    # UDF that can be applied on column to find matches for every row (it seems that PySpark in DataFrame API doesn't have map function)
     def attributes_matcher_wrapper(self, article_attributes):
+        """UDF that can applied on column to find attributes matches for every row
+
+        Args:
+            article_attributes (Dict): Dict[str, str]: Dictionary with string keys, and string values
+        """
+
         def attributes_matcher_UDF(row):
             row_to_dict = row.asDict()
             attribute_matches = {
@@ -72,8 +86,13 @@ class RecommendationEngine:
 
         return udf(attributes_matcher_UDF, returnType=ArrayType(StringType()))
 
-    # Returning DataFrame with following columns: number of matches, count and running_total for matching attributes
     def get_matching_statistics(self) -> DataFrame:
+        """Return DataFrame with following columns:
+            number of matches, count and running_total for matching attributes
+
+        Returns:
+            DataFrame: PySpark DataFrame API object
+        """
         window = Window.orderBy(desc(col("num_of_matches"))).rowsBetween(
             Window.unboundedPreceding, Window.currentRow
         )
@@ -88,6 +107,12 @@ class RecommendationEngine:
         return df_stats
 
     def get_recommendations_limits(self) -> Row:
+        """Calculate top limit from where main recommendations are taken, and bottom limit,
+            which is range after top limit, where additional recommendations are taken
+
+        Returns:
+            Row: Row() object from DataFrame
+        """
 
         df_stats_to_rows = (
             self.get_matching_statistics()
@@ -96,11 +121,12 @@ class RecommendationEngine:
         )
 
         top_recommendation_limit_row = None
+        after_top_recommendation_limit_row = None
         for row in df_stats_to_rows:
-            # print(row)
-            # top
+            # top limit - to mark range for main recommendations
             if row.running_total <= self.recommend_num:
                 top_recommendation_limit_row = row
+            # after top limit (bottom_limit) - to mark range for additonal recommendations
             if row.running_total > self.recommend_num:
                 after_top_recommendation_limit_row = row
                 break
@@ -110,7 +136,13 @@ class RecommendationEngine:
             bottom_limit=after_top_recommendation_limit_row,
         )
 
-    def get_recommendations(self):
+    def get_recommendations(self) -> DataFrame:
+        """Return union of main recommendations and additional article
+            recommendations sorted in descending order
+
+        Returns:
+            DataFrame: DataFrame: PySpark DataFrame API object
+        """
         limit_row = self.get_recommendations_limits()
 
         top_limit = limit_row.top_limit
@@ -137,7 +169,6 @@ class RecommendationEngine:
         else:
             df_recommendations = top_recommendations
 
-        # col("sku") remove later - this is only for reproducibility purposes
         return df_recommendations.orderBy(
-            desc(col("num_of_matches")), col("attribute_matches"), col("sku")
+            desc(col("num_of_matches")), col("attribute_matches")
         )
