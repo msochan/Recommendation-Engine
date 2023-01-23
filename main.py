@@ -32,7 +32,9 @@ if __name__ == "__main__":
     )
     parser.add_argument("--sku_name", help="input product SKU name", type=str)
     parser.add_argument("--json_file", help="input .json file path", type=str)
-    parser.add_argument("--num", help="how many products should be found", type=int)
+    parser.add_argument(
+        "--num", help="how many recommendations for article should be found", type=int
+    )
 
     # Checking if required keyword arguments were provided as the second parameter argv[1] + third parameter argv[2]
     if len(sys.argv) > 3:
