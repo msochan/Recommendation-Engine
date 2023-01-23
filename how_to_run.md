@@ -28,7 +28,7 @@ $ pytest test_recommendation_engine.py
 $ python3 main.py --sku_name="sku-222" --json_file="test-data.json" --num=100
 ```
 
-### After, when the venv is not needed anymore, the command for deactivating the virtual environment is as shown below
+### After, when the venv is not needed anymore, the command for deactivating the virtual environment is shown below
 
 ```bash
 $ deactivate
