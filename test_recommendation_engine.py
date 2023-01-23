@@ -55,13 +55,13 @@ class TestRecommendationEngine(TestCase):
         self.assertEqual(actual_columns, expected_columns)
 
     def test_get_recommendations_limits(self):
-        # Testing if returning Row object got proper length
-        actual_row_length = len(self.engine.get_recommendations_limits())
-        expected_row_length = 2
-        self.assertEqual(actual_row_length, expected_row_length)
+        # Testing if returning tuple object got proper length
+        actual_tuple_length = len(self.engine.get_recommendations_limits())
+        expected_tuple_length = 2
+        self.assertEqual(actual_tuple_length, expected_tuple_length)
 
     def test_get_recommendations(self):
-        # Testing if returning articles are valid
+        # Testing if returning articles list are valid
         df = self.engine.get_recommendations()
         actual_sku_list = df.rdd.map(lambda x: x.sku).collect()
         expected_sku_list = ["sku-189", "sku-185"]

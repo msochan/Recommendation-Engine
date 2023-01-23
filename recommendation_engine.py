@@ -106,12 +106,12 @@ class RecommendationEngine:
 
         return df_stats
 
-    def get_recommendations_limits(self) -> Row:
+    def get_recommendations_limits(self) -> tuple:
         """Calculate top limit from where main recommendations are taken, and bottom limit,
             which is range after top limit, where additional recommendations are taken
 
         Returns:
-            Row: Row() object from DataFrame
+            tuple: tuple contains Row() objects from DataFrame
         """
 
         df_stats_to_rows = (
@@ -131,10 +131,7 @@ class RecommendationEngine:
                 after_top_recommendation_limit_row = row
                 break
 
-        return Row(
-            top_limit=top_recommendation_limit_row,
-            bottom_limit=after_top_recommendation_limit_row,
-        )
+        return top_recommendation_limit_row, after_top_recommendation_limit_row
 
     def get_recommendations(self) -> DataFrame:
         """Return union of main recommendations and additional article
@@ -143,10 +140,7 @@ class RecommendationEngine:
         Returns:
             DataFrame: DataFrame: PySpark DataFrame API object
         """
-        limit_row = self.get_recommendations_limits()
-
-        top_limit = limit_row.top_limit
-        bottom_limit = limit_row.bottom_limit
+        top_limit, bottom_limit = self.get_recommendations_limits()
 
         top_recommendations = self.df_for_recommendation.filter(
             col("num_of_matches") >= top_limit.num_of_matches
