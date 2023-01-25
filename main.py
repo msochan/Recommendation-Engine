@@ -20,7 +20,7 @@ def main(params):
     df = spark.read.json(json_file_path)
 
     engine = RecommendationEngine(sku_name, df, num, spark)
-    engine.get_recommendations().show()
+    engine.get_recommendations().show(truncate=False)
 
     spark.stop()
 

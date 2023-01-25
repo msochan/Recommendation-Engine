@@ -28,5 +28,3 @@ Clean structured reusable code.
 
 ### Expected delivery format
 Gzipped file containing solution with simple instructions how to run data import and how to execute recommendation request.
-
-**python3 main.py --sku_name=sku-1023 --json_file=test-data.json --num=10**
