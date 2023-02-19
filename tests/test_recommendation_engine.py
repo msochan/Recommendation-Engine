@@ -1,7 +1,12 @@
+import os, sys
 from unittest import TestCase
 from pyspark.sql import SparkSession
 from typing import Dict
-from recommendation_engine import RecommendationEngine
+
+PROJECT_ROOT = os.path.join(os.path.realpath(os.path.dirname(__file__)), os.pardir)
+sys.path.append(PROJECT_ROOT)
+
+from engine.recommendation_engine import RecommendationEngine
 
 
 class TestRecommendationEngine(TestCase):
@@ -11,7 +16,7 @@ class TestRecommendationEngine(TestCase):
             .appName("recommendation_engine")
             .getOrCreate()
         )
-        self.df = self.spark_session.read.json("test_recommendation_engine.json")
+        self.df = self.spark_session.read.json("tests/test_recommendation_engine.json")
         self.recommended_num = 2
         self.sku_name = "sku-188"
         self.engine = RecommendationEngine(

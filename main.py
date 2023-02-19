@@ -2,7 +2,7 @@ import logger
 import argparse
 import sys
 from pyspark.sql import SparkSession
-from recommendation_engine import RecommendationEngine
+from engine.recommendation_engine import RecommendationEngine
 
 
 def main(params):

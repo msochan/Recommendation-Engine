@@ -1,11 +1,13 @@
-import logger
-import sys
+import sys, logger, os
 from typing import Dict
 from pyspark.sql.functions import col, desc, sum, udf, size
 from pyspark.sql.types import *
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import udf
 from pyspark.sql.window import Window
+
+PROJECT_ROOT = os.path.join(os.path.realpath(os.path.dirname(__file__)), os.pardir)
+sys.path.append(PROJECT_ROOT)
 
 
 class RecommendationEngine:
