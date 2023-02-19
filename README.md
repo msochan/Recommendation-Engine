@@ -4,7 +4,7 @@
 The given JSON file contains 20K articles (1 object per line).
 Each article contains set of attributes with one set value.
 
-### Recommendation Engine Requirements
+### How Recommendation Engine works?
 Calculate similarity of articles identified by SKU (product identifier) based on their attributes values.
 The number of matching attributes is the most important metric for defining similarity.
 In case of a draw, attributes with a name higher in alphabet (a is higher than z) is weighted heavier.
@@ -18,18 +18,6 @@ Example 2:
 {"sku":"sku-1","attributes":{"att-a": "a1", "att-b": "b1"}} is more similar to 
 {"sku":"sku-2","attributes":{"att-a": "a1", "att-b": "b2"}} than to
 {"sku":"sku-3","attributes":{"att-a": "a2", "att-b": "b1"}}
-
-### Recommendation request example
-sku-123 > ENGINE > 10 most similar SKUs based on criteria described above with their corresponding weights.
-
-### Implementation requirements
-programming Language: scala or python.
-
-### Code requirements
-Clean structured reusable code.
-
-### Expected delivery format
-Gzipped file containing solution with simple instructions how to run data import and how to execute recommendation request.
 
 # How to run
 
@@ -52,7 +40,7 @@ $ pip3 install -r requirements.txt
 ### 3. Aftewards please run following command to run unit tests
 
 ```bash
-$ pytest test_recommendation_engine.py  
+$ pytest tests/test_recommendation_engine.py  
 ```
 
 ### 4. Now run the main.py script by typing the command below and passing necessary keyword parameters (--sku_name, --json_file, -num) for example recommendation request
